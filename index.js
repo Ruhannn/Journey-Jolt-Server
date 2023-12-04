@@ -80,6 +80,8 @@ async function run() {
       const user = req.body;
       console.log(user);
       const email = req.params.email;
+      console.log("email", email);
+
       const exitingUSer = await userCollection.findOne({ email: email });
       if (exitingUSer) {
         res.send({ message: "already exist", status: null });
