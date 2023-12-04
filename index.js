@@ -1,3 +1,4 @@
+const jwt = require('jsonwebtoken');
 const express = require("express");
 const cors = require("cors");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
@@ -23,7 +24,14 @@ async function run() {
     const packageCollection = client.db("JourneyJolt").collection("packages");
     const userCollection = client.db("JourneyJolt").collection("users");
     const wishlistCollection = client.db("JourneyJolt").collection("wishlist");
-
+    const storiesCollection = client.db("JourneyJolt").collection("stories");
+    app.post("/jwt", async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN, {
+        expiresIn: "3h",
+      });
+      res.send({ token });
+    });
     app.get("/packages", async (req, res) => {
       // const email = req.query.email;
       // if (email) {
@@ -38,28 +46,45 @@ async function run() {
       const result = await packageCollection.find().toArray();
       res.send(result);
     });
-    // app.get("/user", async (req, res) => {
-    //   const result = await userCollection.find().toArray();
+    app.get("/stories", async (req, res) => {
+      const result = await storiesCollection.find().toArray();
+      res.send(result);
+    });
+    app.get("/user", async (req, res) => {
+      const result = await userCollection.find().toArray();
+      res.send(result);
+    });
+    app.get("/user/:email", async (req, res) => {
+      const userEmail = req.query.email;
+      const result = await userCollection.findOne({ email: userEmail });
+      res.send(result);
+    });
+
+    // app.put("/user/:email", async (req, res) => {
+    //   const email = req.params.email;
+    //   const photo = req.body.photo;
+    //   const name = req.body.name;
+    //   const userinfo = {
+    //     name,
+    //     photo,
+    //     email,
+    //     role: "user",
+    //     timeCreated: new Date().toLocaleString(),
+    //   };
+    //   console.log("userinfo", userinfo);
+
+    //   const result = await userCollection.insertOne(userinfo);
     //   res.send(result);
     // });
-    app.put("/user/:email", async (req, res) => {
+    app.post("/user/:email", async (req, res) => {
+      const user = req.body;
+      console.log(user);
       const email = req.params.email;
-      const photo = req.body.photo;
-      const name = req.body.name;
-      const userinfo = {
-        name,
-        photo,
-        email,
-        role: "user",
-        timeCreated: new Date().toLocaleString(),
-      };
-
-      const query = { email: email };
-      const options = { upsert: true };
-      const updateDoc = {
-        $set: userinfo,
-      };
-      const result = await userCollection.updateOne(query, updateDoc, options);
+      const exitingUSer = await userCollection.findOne({ email: email });
+      if (exitingUSer) {
+        res.send({ message: "already exist", status: null });
+      }
+      const result = await userCollection.insertOne(user);
       res.send(result);
     });
     app.post("/add-package", async (req, res) => {
@@ -75,10 +100,13 @@ async function run() {
     });
     app.post("/wishlist", async (req, res) => {
       const wishlistItem = req.body;
-      console.log("wishlistItem", wishlistItem);
       const result = await wishlistCollection.insertOne(wishlistItem);
-      res.send(result);
+      res.status(200).json({
+        message: "Item added to the wishlist successfully.",
+        result,
+      });
     });
+
     app.get("/wishlist", async (req, res) => {
       const email = req.query.email;
       if (email) {
@@ -89,6 +117,65 @@ async function run() {
         const result = await wishlistCollection.find().toArray();
         res.send(result);
       }
+    });
+    app.get("/packages/:type", async (req, res) => {
+      const { type } = req.params;
+      try {
+        const result = await packageCollection
+          .find({ tourType: type })
+          .toArray();
+        res.json(result);
+      } catch (error) {
+        console.error("Error fetching packages:", error);
+        res.status(500).json({ message: "Internal Server Error" });
+      }
+    });
+    app.get("/users/admin/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      const result = { admin: user?.role === "admin" };
+      res.send(result);
+    });
+    app.get("/users/guide/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { email: email };
+      const user = await userCollection.findOne(query);
+      const result = { guide: user?.role === "guide" };
+      res.send(result);
+    });
+    app.get("/users/user/:email", async (req, res) => {
+      const email = req.params.email;
+      const user = await userCollection.findOne({ email: email });
+      let isUser = false;
+      if (user) {
+        isUser = user?.role === "user";
+        res.send(isUser);
+      } else {
+        res.send(isUser);
+      }
+    });
+    app.patch("/users/admin/:id", async (req, res) => {
+      const id = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          role: "admin",
+        },
+      };
+      const result = await userCollection.updateOne(filter, updateDoc);
+      res.send(result);
+    });
+    app.patch("/users/guide/:id", async (req, res) => {
+      const id = req.params;
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          role: "Guide",
+        },
+      };
+      const result = await userCollection.updateOne(filter, updateDoc);
+      res.send(result);
     });
     // app.post("/booking-service", async (req, res) => {
     //   const bookingData = req.body;
@@ -106,12 +193,6 @@ async function run() {
     //   const result = await bookingCollection.updateOne(filter, {
     //     $set: updateData,
     //   });
-    //   res.send(result);
-    // });
-    // app.delete("/booking-service/:id", async (req, res) => {
-    //   const id = req.params.id;
-    //   const query = { _id: new ObjectId(id) };
-    //   const result = await bookingCollection.deleteOne(query);
     //   res.send(result);
     // });
     // app.put("/update-service/:id", async (req, res) => {
